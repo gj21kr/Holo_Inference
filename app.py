@@ -60,8 +60,7 @@ class MonaiSegmentationApp(Application):
         # Create operators
         image_loader_op = ImageLoaderOperator(
             self, 
-            CountCondition(self, 1), 
-            config_name=config_name,
+            config=config,
             input_path=input_path,
             name="image_loader_op"
         )
@@ -74,13 +73,7 @@ class MonaiSegmentationApp(Application):
             post_transform=transform,
             name="monai_inference_op"
         )
-        
-        image_saver_op = ImageSaverOperator(
-            self,
-            output_dir=output_path,
-            name="image_saver_op"
-        )
-        
+
         result_display_op = ResultDisplayOperator(
             self,
             display_interval=1.0,
@@ -88,9 +81,8 @@ class MonaiSegmentationApp(Application):
         )
         
         # Connect operators in the flow (similar to `add_flow` in paste.txt)
-        self.add_flow(image_loader_op, inference_op, {("output", "input")})
-        self.add_flow(inference_op, image_saver_op, {("output", "input")})
-        self.add_flow(inference_op, result_display_op, {("output", "input")})
+        self.add_flow(image_loader_op, inference_op, {(image_loader_op.output_name, inference_op.input_name)})
+        self.add_flow(inference_op, result_display_op, {(inference_op.output_name, "input")})
         
         self._logger.debug(f"End {self.compose.__name__}")
 

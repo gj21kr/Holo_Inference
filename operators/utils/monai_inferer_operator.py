@@ -95,12 +95,10 @@ class MonaiSegInferenceOperator(InferenceOperator):
         roi_size: Optional[Union[Sequence[int], int]],
         pre_transforms: Compose,
         post_transforms: Compose,
-        app_context: AppContext,
-        model_name: Optional[str] = "",
+        model = None, 
         overlap: float = 0.25,
         sw_batch_size: int = 4,
         inferer: Union[InfererType, str] = InfererType.SLIDING_WINDOW,
-        model_path: Path = MODEL_LOCAL_PATH,
         **kwargs,
     ):
         """Creates a instance of this class.
@@ -138,39 +136,13 @@ class MonaiSegInferenceOperator(InferenceOperator):
         self._inferer = inferer
 
         # Add this so that the local model path can be set from the calling app
-        self.model_path = model_path
         self.input_name_image = "image"
         self.output_name_seg = "seg_image"
 
-        # The execution context passed in on compute does not have the required model info, so need to
-        # get and keep the model via the AppContext obj on construction.
-        self.app_context = app_context
-
-        self.model = self._get_model(self.app_context, self.model_path, self._model_name)
+        self.model = model
 
         super().__init__(fragment, *args, **kwargs)
 
-    def _get_model(self, app_context: AppContext, model_path: Path, model_name: str):
-        """Load the model with the given name from context or model path
-
-        Args:
-            app_context (AppContext): The application context object holding the model(s)
-            model_path (Path): The path to the model file, as a backup to load model directly
-            model_name (str): The name of the model, when multiples are loaded in the context
-        """
-
-        if app_context.models:
-            # `app_context.models.get(model_name)` returns a model instance if exists.
-            # If model_name is not specified and only one model exists, it returns that model.
-            model = app_context.models.get(model_name)
-        else:
-            self._logger.info(f"Loading TorchScript model from: {model_path!r}")
-            model = torch.jit.load(
-                self.model_path,
-                map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-            )
-
-        return model
 
     def setup(self, spec: OperatorSpec):
         spec.input(self.input_name_image)

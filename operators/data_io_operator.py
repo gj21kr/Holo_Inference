@@ -18,44 +18,64 @@ from transforms.Orientation import orientation
 class ImageLoaderOperator(Operator):
     def __init__(
         self,
-        fragment: Fragment, config, **kwargs):
-        super().__init__(**kwargs)
+        fragment: Fragment, 
+        *args,
+        config, input_path, 
+        **kwargs):
         self.meta = config
+        self.input_path = input_path
+        if '.dcm' in self.input_path:
+            self._image_reader = 'pydicom'
+        else: 
+            self._image_reader = 'sitk'
+
 		self.spacing = (1,1,1)
 		self.origin = (0,0,0)
 		self.direction = (1,0,0,0,1,0,0,0,1)
+        self.input_name = "path"
+        self.output_name = "image"
+        super().__init__(fragment, *args, **kwargs)
 
-    def process(self, input_data=None):
-        try:
-            if not input_data or not os.path.exists(input_data):
-                raise ValueError(f"Invalid input file path: {input_data}")
+    def setup(self, spec: OperatorSpec):
+        spec.output(self.output_name)
 
-            patient_id = os.path.basename(input_data).split('.')[0]
-            img = sitk.ReadImage(input_data)
-            self.spacing = img.GetSpacing()
-            self.origin = img.GetOrigin()
-            self.direction = img.GetDirection()
-                
-            input_data = sitk.GetArrayFromImage(img)
-            input_data = orientation(
-                input_data, transpose=self.meta["TRANSPOSE"][0]
-            )	
-            # Construct metadata dictionary
-            self.meta.update({
-                "PatientID": patient_id,
-                "InferenceDate": time.strftime("%Y-%m-%d"),
-                "PixelSpacing": self.spacing,
-                "Origin": self.origin,
-                "Direction": self.direction
-            })
-            # calculate affine 
-            affine = self.calculate_affine_matrix()
+    def _sitk_reader(self, input_path):
+        img = sitk.ReadImage(input_data)
+        self.spacing = img.GetSpacing()
+        self.origin = img.GetOrigin()
+        self.direction = img.GetDirection()
+            
+        input_data = sitk.GetArrayFromImage(img)
+        input_data = orientation(
+            input_data, transpose=self.meta["TRANSPOSE"][0]
+        )	
+        return input_data
 
-            # Output dictionary for downstream operators
-            output = {"image": image, "meta": meta, "transform": self.transform, "affine": affine}
-            return output
-        except:
-            return False
+    def compute(self, op_input, op_output, context):
+        input_image = self.input_path
+        if not input_image:
+            raise ValueError("Input image is not found.")
+
+        patient_id = os.path.basename(input_data).split('.')[0]
+        if self._image_reader == 'pydicom':
+            input_data = self._pydicom_reader(input_data)
+        else:
+            input_data = self._sitk_reader(input_data)
+            
+        # Construct metadata dictionary
+        self.meta.update({
+            "PatientID": patient_id,
+            "InferenceDate": time.strftime("%Y-%m-%d"),
+            "PixelSpacing": self.spacing,
+            "Origin": self.origin,
+            "Direction": self.direction
+        })
+        # calculate affine 
+        affine = self.calculate_affine_matrix()
+
+        # Output dictionary for downstream operators
+        output = {"image": image, "meta": meta, "transform": self.transform, "affine": affine}
+        op_output.emit(output, self.output_name)
 
     def calculate_affine_matrix(self):
         """
@@ -80,8 +100,13 @@ class ImageLoaderOperator(Operator):
 class ImageSaverOperator(Operator):
 	def __init__(
         self,
-        fragment: Fragment, output_dir):
+        fragment: Fragment, 
+        *args,
+        output_dir,
+        **kwargs):
         self.output_dir = output_dir
+        self.input_name = "image"
+        super().__init__(fragment, *args, **kwargs)
 
     def saver(self, this_class_data, transpose, spacing, origin, direction, output_dir, class_name):
         this_class_data = orientation(
@@ -100,26 +125,26 @@ class ImageSaverOperator(Operator):
         output_path = os.path.join(output_dir, class_name+'.nii.gz')
         sitk.WriteImage(img, output_path)
 
-	def process(self, input_data):
-        try:
-            output_dir = os.path.join(self.output_dir, input_data["meta"]["InferenceDate"], input_data["meta"]["PatientID"])
-            if not os.path.isdir(output_dir):
-                os.makedirs(output_dir, exist_ok=True)
+    def setup(self, spec: OperatorSpec):
+        spec.input(self.input_name)
 
-            for i, class_name in enumerate(input_data["meta"]["CLASSES"].values()):		
-                self.saver(
-                    input_data["image"][i],
-                    input_data["meta"]["TRANSPOSE"][1],
-                    input_data["meta"]["PixelSpacing"],
-                    input_data["meta"]["Origin"],
-                    input_data["meta"]["Direction"],
-                    output_dir, class_name)
+    def compute(self, op_input, op_output, context):
+        input_data = op_input.receive(self.input_name)
+        if not input_data:
+            raise ValueError("Input image is not found.")
 
-            print(f"✅ Image successfully saved at: {output_path}")
-            return True
-        except Exception as e:
-            print(f"❌ Failed to save image: {e}")
-            return False
+        for i, class_name in enumerate(input_data["meta"]["CLASSES"].values()):		
+            self.saver(
+                input_data["image"][i],
+                input_data["meta"]["TRANSPOSE"][1],
+                input_data["meta"]["PixelSpacing"],
+                input_data["meta"]["Origin"],
+                input_data["meta"]["Direction"],
+                output_dir, class_name)
+
+        print(f"✅ Image successfully saved at: {output_path}")
+        return True
+
 
 ########################################
 # ResultDisplayOperator
@@ -131,8 +156,8 @@ class ResultDisplayOperator(Operator):
     """
     def __init__(
         self,
-        fragment: Fragment, display_interval=1.0, **kwargs):
-        super().__init__(**kwargs)
+        fragment: Fragment, *args, display_interval=1.0, **kwargs):
+        super().__init__(fragment, *args, **kwargs)
         self.display_interval = display_interval  # seconds between displays
 
     def process(self, input_data):
