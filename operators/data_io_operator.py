@@ -61,7 +61,7 @@ class ImageLoaderOperator(Operator):
             input_data = self._pydicom_reader(input_data)
         else:
             input_data = self._sitk_reader(input_data)
-            
+
         # Construct metadata dictionary
         self.meta.update({
             "PatientID": patient_id,
@@ -157,16 +157,19 @@ class ResultDisplayOperator(Operator):
     def __init__(
         self,
         fragment: Fragment, *args, display_interval=1.0, **kwargs):
-        super().__init__(fragment, *args, **kwargs)
         self.display_interval = display_interval  # seconds between displays
+        self.input_name = "segmentation"
+        super().__init__(fragment, *args, **kwargs)
 
-    def process(self, input_data):
+    def setup(self, spec: OperatorSpec):
+        spec.input(self.input_name)
+
+    def compute(self, op_input, op_output, context):
         # Expect input_data to be a dictionary containing "segmentation"
-        if input_data is None or "segmentation" not in input_data:
-            print("No segmentation output to display.")
-            return None
+        segmentation = op_input.receive(self.input_name)
+        if not segmentation:
+            raise ValueError("Input segmentation is not found.")
 
-        segmentation = input_data["segmentation"]
         # Assume segmentation is a 2D array (if 3D, you may select a slice)
         if segmentation.ndim == 3:
             # For example, select the middle slice along the depth axis:
@@ -182,6 +185,3 @@ class ResultDisplayOperator(Operator):
         plt.show(block=False)
         plt.pause(self.display_interval)
         plt.close()
-        # Optionally, you could also save the output to a file.
-        return input_data
-

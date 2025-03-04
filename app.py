@@ -6,7 +6,6 @@ import argparse
 import importlib
 from pathlib import Path
 
-from holoscan.conditions import CountCondition
 from holoscan.core import Application
 
 from monai_inference_operator import MONAIInferenceOperator
@@ -80,9 +79,9 @@ class MonaiSegmentationApp(Application):
             name="result_display_op"
         )
         
-        # Connect operators in the flow (similar to `add_flow` in paste.txt)
+        # Connect operators in the flow
         self.add_flow(image_loader_op, inference_op, {(image_loader_op.output_name, inference_op.input_name)})
-        self.add_flow(inference_op, result_display_op, {(inference_op.output_name, "input")})
+        self.add_flow(inference_op, result_display_op, {(inference_op.output_name, result_display_op.input_name)})
         
         self._logger.debug(f"End {self.compose.__name__}")
 
