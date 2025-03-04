@@ -277,10 +277,15 @@ def load_saved_model(config, model):
     else:
         dp = config["DataParallel"]
 
-    saved_model = config["SAVED_MODEL"] if '.pth' in config["SAVED_MODEL"] else config["SAVED_MODEL"]+'.pth'
-    # saved_model = f'models/{saved_model}'
+    # saved_model = config["SAVED_MODEL"] if '.pth' in config["SAVED_MODEL"] else config["SAVED_MODEL"]+'.pth'
+    saved_model = f'models/{config["MODEL_VERSION"]}.pth'
     if dp == True:
         model = torch.nn.DataParallel(model)
+    # check cuda available 
+    if torch.cuda.is_available():
+        config["device"] = torch.device("cuda")
+    else:
+        config["device"] = torch.device("cpu")
     model_load = torch.load(saved_model, map_location=config["device"], weights_only=False)
     model.load_state_dict(model_load[key], strict=True)
     model.to(config["device"])

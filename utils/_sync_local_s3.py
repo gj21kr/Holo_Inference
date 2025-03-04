@@ -29,8 +29,8 @@ def download_weights_from_url(url, local_path):
 if __name__ == "__main__":
     # LargeIASeg / CMHA
     # brain_windowed / total_segmentation
-    s3_path = 's3://jungeun/train_results/AVT/nnunet/dice/Whole_Mixed_[96, 96, 96]_window[-1000, 2000]_spacing[None, None, None]_drop[0.1]/'
-    local_path = '/home/xcath-ai/Data/train_results/AVT/nnunet/dice/Whole_Mixed_[96, 96, 96]_window[-1000, 2000]_spacing[None, None, None]_drop[0.1]/'
+    s3_path = 's3://jungeun/data/AVT/Dongyang/D1/'
+    local_path = '/home/holoscan/Data/data/AVT/Dongyang/D1/'
 
     if not os.path.exists(local_path):
         os.makedirs(local_path, exist_ok=True)

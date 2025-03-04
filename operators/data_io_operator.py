@@ -3,6 +3,7 @@ import glob
 import time
 import numpy as np
 import pydicom
+import nrrd
 import SimpleITK as sitk
 import matplotlib.pyplot as plt
 
@@ -12,7 +13,7 @@ from holoscan.core import Operator, OperatorSpec, Fragment
 from transforms.Orientation import orientation
 
 ########################################
-# NIFTIReaderOperator
+# ReaderOperator
 ########################################
 class ImageLoaderOperator(Operator):
     def __init__(
@@ -23,8 +24,10 @@ class ImageLoaderOperator(Operator):
         **kwargs):
         self.meta = config
         self.input_path = input_path
-        if '.dcm' in self.input_path:
+        if '.dcm' in str(self.input_path):
             self._image_reader = 'pydicom'
+        elif '.nrrd' in str(self.input_path):
+            self._image_reader = 'nrrd'
         else: 
             self._image_reader = 'sitk'
 
@@ -38,8 +41,15 @@ class ImageLoaderOperator(Operator):
     def setup(self, spec: OperatorSpec):
         spec.output(self.output_name)
 
+    def _nrrd_reader(self, input_path):
+        img, header = nrrd.read(input_path)
+        self.spacing = header["space directions"]
+        self.origin = header["space origin"]
+        self.direction = header["space directions"]
+        return img
+
     def _sitk_reader(self, input_path):
-        img = sitk.ReadImage(input_data)
+        img = sitk.ReadImage(input_path)
         self.spacing = img.GetSpacing()
         self.origin = img.GetOrigin()
         self.direction = img.GetDirection()
@@ -51,13 +61,15 @@ class ImageLoaderOperator(Operator):
         return input_data
 
     def compute(self, op_input, op_output, context):
-        input_image = self.input_path
-        if not input_image:
+        input_data = self.input_path
+        if not input_data:
             raise ValueError("Input image is not found.")
 
         patient_id = os.path.basename(input_data).split('.')[0]
         if self._image_reader == 'pydicom':
             input_data = self._pydicom_reader(input_data)
+        elif self._image_reader == 'nrrd':
+            input_data = self._nrrd_reader(input_data)
         else:
             input_data = self._sitk_reader(input_data)
 
@@ -73,7 +85,7 @@ class ImageLoaderOperator(Operator):
         affine = self.calculate_affine_matrix()
 
         # Output dictionary for downstream operators
-        output = {"image": image, "meta": meta, "transform": self.transform, "affine": affine}
+        output = {"image": input_data, "meta": self.meta, "transform": self.transform, "affine": affine}
         op_output.emit(output, self.output_name)
 
     def calculate_affine_matrix(self):

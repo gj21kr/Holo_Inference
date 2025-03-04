@@ -70,7 +70,7 @@ class MonaiSegmentationApp(Application):
             config=config,
             model_version=config.get("MODEL_VERSION", "default"),
             output_dir=output_path,
-            post_transform=transform,
+            post_transforms=transform,
             name="monai_inference_op"
         )
 

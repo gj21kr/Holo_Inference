@@ -1,0 +1,16 @@
+boto3==1.37.6
+cucim==23.10.0
+cupy_cuda12x==13.3.0
+joblib==1.4.2
+matplotlib==3.10.1
+monai==1.4.0
+nibabel==5.3.2
+niftynet==0.6.0
+numpy==2.2.3
+pydicom==3.0.1
+Resources==0.0.1
+scipy==1.15.2
+SimpleITK==2.4.1
+skimage==0.0
+torch==2.6.0
+scikit-image==0.25.2 

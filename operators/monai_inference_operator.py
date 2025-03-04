@@ -3,10 +3,15 @@ import monai
 import nibabel as nib
 import numpy as np
 import os
+from typing import Dict, Sequence, Union
+from numpy import uint8
+import logging
+from collections.abc import Hashable, Mapping
 
 # Import MONAI functions 
 from monai.transforms import (
-        Compose, RandAffined, EnsureChannelFirstd
+    Compose, Activationsd,
+    AsDiscreted, SaveImaged, MapTransform,
 )
 
 # Import Holoscan base operator (the exact import may vary based on Holoscan version)
@@ -17,6 +22,7 @@ from core.call import call_model
 from utils.utils import load_saved_model
 from utils.inferer import SlidingWindowInferer
 from transforms.call_preproc import call_trans_function
+from transforms.ImageProcessing import Antialiasingd    
 
 class MONAIInferenceOperator(Operator):
     def __init__(
@@ -74,7 +80,7 @@ class MONAIInferenceOperator(Operator):
                 # Uncompress NIfTI file, nii, is used favoring speed over size, but can be changed to nii.gz
                 SaveImaged(
                     keys=self._pred_dataset_key,
-                    output_dir=out_dir,
+                    output_dir=self.output_dir,
                     output_postfix="seg",
                     output_dtype=uint8,
                     resample=False,
@@ -93,6 +99,9 @@ class MONAIInferenceOperator(Operator):
         )
         super().__init__(fragment, *args, **kwargs)
 
+    def setup(self, spec: OperatorSpec):
+        spec.input(self.input_name)
+        spec.output(self.output_name)
 
     def _load_model(self):
         self.model = load_saved_model(self.config, call_model(self.config))

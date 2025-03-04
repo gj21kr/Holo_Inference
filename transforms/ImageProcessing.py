@@ -6,7 +6,8 @@ import torch
 import numpy as np
 from monai.transforms import Transform, MapTransform, LoadImage
 from monai.utils.enums import TransformBackends
-from monai.config import KeysCollection
+from monai.networks.layers import GaussianFilter
+from monai.config import KeysCollection, NdarrayTensor
 
 from transforms.utils import optional_import, convert_data_type, convert_to_cupy
 
@@ -28,7 +29,41 @@ __all__ = [
     "TargetMultiWindowingd", "TargetMultiWindowing",
     "DuplicateChanneld", 
     "RandMultiWindowingd", "RandMultiWindowing",
+    "Antialiasingd"
 ]
+
+
+# from https://github.com/Project-MONAI/MONAI/issues/3178
+class Antialiasingd(MapTransform):
+    def __init__(
+        self,
+        keys: KeysCollection,
+        sigma: Union[Sequence[float], float] = 1.0,
+        approx: str = "erf",
+        threshold: float = 0.5,
+        allow_missing_keys: bool = False,
+    ) -> None:
+        super().__init__(keys, allow_missing_keys)
+        self.sigma = sigma
+        self.approx = approx
+        self.threshold = threshold
+
+    def __call__(self, data: Mapping[Hashable, NdarrayTensor]) -> Dict[Hashable, NdarrayTensor]:
+        d = dict(data)
+        for key in self.key_iterator(d):
+            img = d[key]
+
+            gaussian_filter = GaussianFilter(img.ndim - 1, self.sigma, approx=self.approx)
+
+            labels = torch.unique(img)[1:]
+            new_img = torch.zeros_like(img)
+            for label in labels:
+                label_mask = (img == label).to(torch.float)
+                blurred = gaussian_filter(label_mask.unsqueeze(0)).squeeze(0)
+                new_img[blurred > self.threshold] = label
+            d[key] = new_img
+        return d
+
 
 class DuplicateChanneld(MapTransform):
     def __init__(self, keys: KeysCollection, target_channels: int):
