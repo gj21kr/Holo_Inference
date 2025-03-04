@@ -16,7 +16,9 @@ from transforms.Orientation import orientation
 # NIFTIReaderOperator
 ########################################
 class ImageLoaderOperator(Operator):
-    def __init__(self, config, **kwargs):
+    def __init__(
+        self,
+        fragment: Fragment, config, **kwargs):
         super().__init__(**kwargs)
         self.meta = config
 		self.spacing = (1,1,1)
@@ -76,7 +78,9 @@ class ImageLoaderOperator(Operator):
 # ImageSaverOperatoroutput_dir
 ########################################
 class ImageSaverOperator(Operator):
-	def __init__(self, output_dir):
+	def __init__(
+        self,
+        fragment: Fragment, output_dir):
         self.output_dir = output_dir
 
     def saver(self, this_class_data, transpose, spacing, origin, direction, output_dir, class_name):
@@ -125,7 +129,9 @@ class ResultDisplayOperator(Operator):
     A simple result display operator that receives a dictionary containing segmentation results.
     It then displays or saves the segmentation using matplotlib.
     """
-    def __init__(self, display_interval=1.0, **kwargs):
+    def __init__(
+        self,
+        fragment: Fragment, display_interval=1.0, **kwargs):
         super().__init__(**kwargs)
         self.display_interval = display_interval  # seconds between displays
 

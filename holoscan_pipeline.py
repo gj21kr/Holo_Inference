@@ -1,7 +1,13 @@
-import os
-import importlib
+#!/usr/bin/env python3
 
-from holoscan.core import Application, Graph
+import os
+import logging
+import argparse
+import importlib
+from pathlib import Path
+
+from holoscan.conditions import CountCondition
+from holoscan.core import Application
 
 from monai_inference_operator import MONAIInferenceOperator
 from data_io_operator import (
@@ -10,52 +16,94 @@ from data_io_operator import (
     ResultDisplayOperator
 )
 
-def build_pipeline(args):
-    # Create Holoscan application
-    app = Application(name="MonaiSegmentationApp")
+class MonaiSegmentationApp(Application):
+    def __init__(self, *args, **kwargs):
+        """Creates an application instance."""
+        super().__init__(*args, **kwargs)
+        self._logger = logging.getLogger("{}.{}".format(__name__, type(self).__name__))
 
-    # Create a graph (pipeline)
-    graph = Graph()
+    def run(self, *args, **kwargs):
+        """Run the application."""
+        self._logger.info(f"Begin {self.run.__name__}")
+        super().run(*args, **kwargs)
+        self._logger.info(f"End {self.run.__name__}")
 
-    _module = importlib.import_module(f"config.{args.c}")
-    config = _module.config
-    transform = _module.transform
+    def compose(self):
+        """Creates the app specific operators and chain them up in the processing DAG."""
+        self._logger.debug(f"Begin {self.compose.__name__}")
+        
+        # Parse command line arguments
+        parser = argparse.ArgumentParser(description='Segmentation Worker')
+        parser.add_argument('-i', type=str, help='Input data path')
+        parser.add_argument('-o', type=str, help='Output data path')
+        parser.add_argument('-c', type=str, help='Config file name')
+        parser.add_argument('-g', type=str, help='GPUs', default='0')
+        
+        args, unknown = parser.parse_known_args(self.argv)
+        
+        # Set up paths
+        input_path = Path(args.i) if args.i else Path("./input")
+        output_path = Path(args.o) if args.o else Path("./output")
+        config_name = args.c if args.c else "default_config"
+        
+        self._logger.info(f"Input path: {input_path}, Output path: {output_path}, Config: {config_name}")
+        
+        # Import configuration
+        try:
+            _module = importlib.import_module(f"config.{config_name}")
+            config = _module.config
+            transform = _module.transform
+        except ImportError:
+            self._logger.error(f"Could not import config module: config.{config_name}")
+            raise
+        
+        # Create operators
+        image_loader_op = ImageLoaderOperator(
+            self, 
+            CountCondition(self, 1), 
+            config_name=config_name,
+            input_path=input_path,
+            name="image_loader_op"
+        )
+        
+        inference_op = MONAIInferenceOperator(
+            self,
+            config=config,
+            model_version=config.get("MODEL_VERSION", "default"),
+            output_dir=output_path,
+            post_transform=transform,
+            name="monai_inference_op"
+        )
+        
+        image_saver_op = ImageSaverOperator(
+            self,
+            output_dir=output_path,
+            name="image_saver_op"
+        )
+        
+        result_display_op = ResultDisplayOperator(
+            self,
+            display_interval=1.0,
+            name="result_display_op"
+        )
+        
+        # Connect operators in the flow (similar to `add_flow` in paste.txt)
+        self.add_flow(image_loader_op, inference_op, {("output", "input")})
+        self.add_flow(inference_op, image_saver_op, {("output", "input")})
+        self.add_flow(inference_op, result_display_op, {("output", "input")})
+        
+        self._logger.debug(f"End {self.compose.__name__}")
 
-    # Create other operators (e.g., image reader, display, writer) here...
-    # For instance, assume we have an operator 'DICOMReader' that outputs {"image":..., "meta":...}
-    # and an operator 'ResultDisplay' that shows the segmentation.
-    # These are placeholders for actual implementations.
-    image_3d_reader = ImageLoaderOperator(config_name=args.c)
-    image_3d_saver = ImageSaverOperator(output_dir=args.o)
-    result_display = ResultDisplayOperator(display_interval=1.0)
-
-    # Create your custom MONAI inference operator
-    inference_3d_op = MONAIInferenceOperator(
-        config=config,
-        model_version=config["MODEL_VERSION"],
-        output_dir=args.o,
-        post_transform=transform,
-        name="monai_inference",
-    )
-
-    # Connect operators in the graph (3D Segmentation only):
-    # image_3d_reader -> inference_3d_op -> result_display, image_3d_saver
-    graph.connect(image_3d_reader, "output", inference_3d_op, "input")
-    graph.connect(inference_3d_op, "output", image_3d_saver, "input")
-    graph.connect(inference_3d_op, "output", result_display, "input")
-
-    # Add graph to application and run:
-    app.add_graph(graph)
-    return app
 
 if __name__ == "__main__":
-	parser = ap.ArgumentParser(description='Segmentation Worker')
-	parser.add_argument('-i', type=str, help='Input data path')
-	parser.add_argument('-o', type=str, help='Output data path')
-	parser.add_argument('-c', type=str, help='Config file name')
-	parser.add_argument('-g', type=str, help='GPUs')
-
-	args = parser.parse_args()
+    # Configure basic logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logging.info(f"Begin {__name__}")
     
-    app = build_pipeline(args)
-    app.run()  # This will run the Holoscan pipeline
+    # Create and run the application
+    MonaiSegmentationApp().run()
+    
+    logging.info(f"End {__name__}")

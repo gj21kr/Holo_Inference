@@ -11,7 +11,7 @@ from monai.transforms import (
 )
 
 # Import Holoscan base operator (the exact import may vary based on Holoscan version)
-from holoscan.core import Operator  # Example; adjust based on actual Holoscan SDK
+from holoscan.core import ConditionType, Fragment, Operator, OperatorSpec
 
 # Third-party
 from core.call import call_model
@@ -20,7 +20,10 @@ from utils.inferer import SlidingWindowInferer
 from transforms.call_preproc import call_trans_function
 
 class MONAIInferenceOperator(Operator):
-    def __init__(self, config, model_version, output_dir, post_transform, device="cuda", **kwargs):
+    def __init__(
+        self,
+        fragment: Fragment,
+        config, model_version, output_dir, post_transform, device="cuda", **kwargs):
         super().__init__(**kwargs)
         self.config = config
             
