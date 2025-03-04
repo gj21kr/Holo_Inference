@@ -6,8 +6,7 @@ import pydicom
 import SimpleITK as sitk
 import matplotlib.pyplot as plt
 
-# Holoscan operator base class import (adjust based on your Holoscan SDK)
-from holoscan.core import Operator
+from holoscan.core import Operator, OperatorSpec, Fragment
 
 # Third-party 
 from transforms.Orientation import orientation
@@ -29,9 +28,9 @@ class ImageLoaderOperator(Operator):
         else: 
             self._image_reader = 'sitk'
 
-		self.spacing = (1,1,1)
-		self.origin = (0,0,0)
-		self.direction = (1,0,0,0,1,0,0,0,1)
+        self.spacing = (1,1,1)
+        self.origin = (0,0,0)
+        self.direction = (1,0,0,0,1,0,0,0,1)
         self.input_name = "path"
         self.output_name = "image"
         super().__init__(fragment, *args, **kwargs)
@@ -98,7 +97,7 @@ class ImageLoaderOperator(Operator):
 # ImageSaverOperatoroutput_dir
 ########################################
 class ImageSaverOperator(Operator):
-	def __init__(
+    def __init__(
         self,
         fragment: Fragment, 
         *args,

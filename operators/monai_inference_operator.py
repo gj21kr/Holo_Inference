@@ -3,7 +3,6 @@ import monai
 import nibabel as nib
 import numpy as np
 import os
-import vtk
 
 # Import MONAI functions 
 from monai.transforms import (
