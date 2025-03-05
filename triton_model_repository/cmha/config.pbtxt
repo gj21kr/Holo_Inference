@@ -1,17 +1,24 @@
 name: "cmha"
-platform: "onnxruntime_onnx"
 max_batch_size: 1
 input [
   {
     name: "input"
-    data_type: TYPE_FP16
+    data_type: TYPE_FP32
     dims: [ 1, 128, 128, 128 ]
   }
 ]
 output [
   {
     name: "output"
-    data_type: TYPE_FP16
+    data_type: TYPE_FP32
     dims: [ 2, 128, 128, 128 ]
   }
 ]
+
+
+# GPU 실행을 위한 설정
+instance_group {
+  count: 1
+  kind: KIND_GPU
+  gpus: [ 0 ]
+}

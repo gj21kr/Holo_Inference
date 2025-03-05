@@ -46,11 +46,17 @@ def scan_model_directory(directory):
 
 def parse_config_pbtxt(config_path):
     """config.pbtxt 파일 파싱하여 모델 정보 추출"""
+    logger = logging.getLogger("triton_model_configure")
+    
     if not config_path.exists():
         return None
     
-    with open(config_path, 'r') as f:
-        content = f.read()
+    try:
+        with open(config_path, 'r') as f:
+            content = f.read()
+    except Exception as e:
+        logger.error(f"설정 파일을 읽는 중 오류 발생: {e}")
+        return None
     
     # 기본 정보 추출
     info = {}
@@ -59,28 +65,66 @@ def parse_config_pbtxt(config_path):
     name_match = re.search(r'name\s*:\s*"([^"]+)"', content)
     if name_match:
         info['name'] = name_match.group(1)
+    else:
+        # 파일 이름에서 모델 이름 추출
+        info['name'] = config_path.parent.name
     
     # 플랫폼
     platform_match = re.search(r'platform\s*:\s*"([^"]+)"', content)
     if platform_match:
         info['platform'] = platform_match.group(1)
+    else:
+        info['platform'] = "onnxruntime"  # 기본값
     
     # 최대 배치 크기
     batch_match = re.search(r'max_batch_size\s*:\s*(\d+)', content)
     if batch_match:
         info['max_batch_size'] = int(batch_match.group(1))
+    else:
+        info['max_batch_size'] = 1  # 기본값
     
-    # 입력 정보
-    input_dims_match = re.search(r'input\s*\{[^}]*dims\s*:\s*\[\s*([^\]]+)\s*\]', content, re.DOTALL)
-    if input_dims_match:
-        dims_str = input_dims_match.group(1).strip()
-        info['input_dims'] = [d.strip() for d in dims_str.split(',')]
+    # 입력 정보 (다양한 패턴 시도)
+    input_dims = []
+    input_section = re.search(r'input\s*\{([^}]*)\}', content, re.DOTALL)
+    if input_section:
+        input_text = input_section.group(1)
+        dims_match = re.search(r'dims\s*:\s*\[\s*([^\]]+)\s*\]', input_text, re.DOTALL)
+        if dims_match:
+            dims_str = dims_match.group(1).strip()
+            input_dims = [d.strip() for d in dims_str.split(',')]
+        else:
+            # 설정에서 입력 차원을 찾을 수 없으면 기본값 사용
+            logger.warning(f"입력 차원을 찾을 수 없습니다: {config_path}")
+            input_dims = ["1", "96", "96", "96"]  # 기본값
+    else:
+        # 입력 섹션을 찾을 수 없으면 기본값 사용
+        logger.warning(f"입력 섹션을 찾을 수 없습니다: {config_path}")
+        input_dims = ["1", "96", "96", "96"]  # 기본값
     
-    # 출력 정보
-    output_dims_match = re.search(r'output\s*\{[^}]*dims\s*:\s*\[\s*([^\]]+)\s*\]', content, re.DOTALL)
-    if output_dims_match:
-        dims_str = output_dims_match.group(1).strip()
-        info['output_dims'] = [d.strip() for d in dims_str.split(',')]
+    info['input_dims'] = input_dims
+    
+    # 출력 정보 (다양한 패턴 시도)
+    output_dims = []
+    output_section = re.search(r'output\s*\{([^}]*)\}', content, re.DOTALL)
+    if output_section:
+        output_text = output_section.group(1)
+        dims_match = re.search(r'dims\s*:\s*\[\s*([^\]]+)\s*\]', output_text, re.DOTALL)
+        if dims_match:
+            dims_str = dims_match.group(1).strip()
+            output_dims = [d.strip() for d in dims_str.split(',')]
+        else:
+            # 설정에서 출력 차원을 찾을 수 없으면 기본값 사용
+            logger.warning(f"출력 차원을 찾을 수 없습니다: {config_path}")
+            output_dims = ["1", "96", "96", "96"]  # 기본값
+    else:
+        # 출력 섹션을 찾을 수 없으면 기본값 사용
+        logger.warning(f"출력 섹션을 찾을 수 없습니다: {config_path}")
+        output_dims = ["1", "96", "96", "96"]  # 기본값
+    
+    info['output_dims'] = output_dims
+    
+    # 로깅
+    logger.debug(f"파싱된 모델 정보: {info}")
     
     return info
 
@@ -105,12 +149,12 @@ max_batch_size: {model_info.get('max_batch_size', 1)}
 input {{
   name: "input"
   data_type: TYPE_FP32
-  dims: [ {', '.join(model_info['input_dims'])} ]
+  dims: [ {', '.join(model_info.get('input_dims', ['1', '96', '96', '96']))} ]
 }}
 output {{
   name: "output"
   data_type: TYPE_FP32
-  dims: [ {', '.join(model_info['output_dims'])} ]
+  dims: [ {', '.join(model_info.get('output_dims', ['1', '96', '96', '96']))} ]
 }}
 
 # CPU 실행을 위한 설정
@@ -147,12 +191,12 @@ max_batch_size: {model_info.get('max_batch_size', 1)}
 input {{
   name: "input"
   data_type: TYPE_FP32
-  dims: [ {', '.join(model_info['input_dims'])} ]
+  dims: [ {', '.join(model_info.get('input_dims', ['1', '96', '96', '96']))} ]
 }}
 output {{
   name: "output"
   data_type: TYPE_FP32
-  dims: [ {', '.join(model_info['output_dims'])} ]
+  dims: [ {', '.join(model_info.get('output_dims', ['1', '96', '96', '96']))} ]
 }}
 
 # GPU 실행을 위한 설정
@@ -181,6 +225,8 @@ def main():
                        help='설정 파일 백업 생성')
     parser.add_argument('-v', '--verbose', action='store_true',
                        help='자세한 로그 출력')
+    parser.add_argument('-f', '--force', action='store_true',
+                       help='기존 설정 무시하고 강제 업데이트')
     
     args = parser.parse_args()
     
@@ -203,7 +249,7 @@ def main():
     
     # 모델 목록 결정
     if args.models:
-        models_to_process = args.models.split(',')
+        models_to_process = [m.strip() for m in args.models.split(',')]
     else:
         models_to_process = scan_model_directory(repo_path)
         logger.info(f"발견된 모델: {', '.join(models_to_process)}")
@@ -224,8 +270,14 @@ def main():
         # 모델 정보 파싱
         model_info = parse_config_pbtxt(config_path)
         if not model_info:
-            logger.warning(f"모델 {model_name}의 설정을 파싱할 수 없습니다.")
-            continue
+            logger.warning(f"모델 {model_name}의 설정을 파싱할 수 없습니다. 기본값을 사용합니다.")
+            model_info = {
+                'name': model_name,
+                'platform': 'onnx',
+                'max_batch_size': 1,
+                'input_dims': ['1', '96', '96', '96'],
+                'output_dims': ['1', '96', '96', '96']
+            }
         
         # 설정 업데이트
         if use_gpu == 'yes':

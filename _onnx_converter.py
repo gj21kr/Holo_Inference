@@ -91,7 +91,7 @@ def generate_triton_config(config, model_name, output_path):
     
     # config.pbtxt 파일 내용 생성
     config_content = f"""name: "{model_name}"
-platform: "onnx"
+platform: "onnxruntime"
 max_batch_size: 1
 input [
   {{
