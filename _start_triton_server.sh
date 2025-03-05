@@ -1,5 +1,5 @@
 #!/bin/bash
-# Triton 서버 시작 스크립트 - 유연한 설정
+# Triton 서버 시작 스크립트 - 유연한 설정 (CUDA 라이브러리 지원 개선)
 
 # 기본 설정 변수 (환경 변수로 변경 가능)
 MODEL_REPOSITORY=${MODEL_REPOSITORY:-"/home/holoscan/Documents/Holo_Inference/triton_model_repository"}
@@ -104,7 +104,28 @@ fi
 DOCKER_RUN_OPTS="-d -p $PORT_HTTP:8000 -p $PORT_GRPC:8001 -p $PORT_METRICS:8002 --name $CONTAINER_NAME"
 if [ "$USE_GPU" = "yes" ]; then
   DOCKER_RUN_OPTS="$DOCKER_RUN_OPTS --runtime=nvidia"
-  echo "GPU 모드로 실행합니다."
+  
+  # Add CUDA library mounts
+  # First, find CUDA library path
+  CUDA_LIB_PATH=$(dirname $(ldconfig -p | grep libcudart.so | head -1 | tr ' ' '\n' | grep /))
+  if [ -z "$CUDA_LIB_PATH" ]; then
+    CUDA_LIB_PATH="/usr/local/cuda/lib64"
+  fi
+  
+  # Volume mounts for CUDA libraries
+  DOCKER_RUN_OPTS="$DOCKER_RUN_OPTS -v $CUDA_LIB_PATH:/usr/local/cuda/lib64:ro"
+  
+  # Add additional library paths if they exist
+  for lib_path in /usr/lib/x86_64-linux-gnu /usr/lib/nvidia; do
+    if [ -d "$lib_path" ]; then
+      DOCKER_RUN_OPTS="$DOCKER_RUN_OPTS -v $lib_path:$lib_path:ro"
+    fi
+  done
+  
+  # Environment variables for CUDA libraries
+  DOCKER_RUN_OPTS="$DOCKER_RUN_OPTS -e LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
+  
+  echo "GPU 모드로 실행합니다. CUDA 라이브러리를 마운트합니다."
 else
   echo "CPU 모드로 실행합니다."
 fi
@@ -121,6 +142,15 @@ docker cp $MODEL_REPOSITORY/. $CONTAINER_NAME:/models/
 # 모델 디렉토리 권한 설정
 echo "모델 디렉토리 권한 설정 중..."
 docker exec $CONTAINER_NAME chmod -R 755 /models
+
+# Copy library check script to container
+echo "CUDA 라이브러리 체크 스크립트 복사 중..."
+docker cp check_cuda_libraries.sh $CONTAINER_NAME:/tmp/
+docker exec $CONTAINER_NAME chmod +x /tmp/check_cuda_libraries.sh
+
+# Check CUDA libraries in container
+echo "컨테이너 내 CUDA 라이브러리 확인 중..."
+docker exec $CONTAINER_NAME /tmp/check_cuda_libraries.sh
 
 # Triton 서버 시작 명령 구성
 TRITON_CMD="tritonserver --model-repository=/models --log-verbose=$LOG_LEVEL --strict-model-config=false"
@@ -145,7 +175,7 @@ fi
 # Triton 서버 시작
 echo "Triton 서버 시작 중..."
 echo "실행 명령: $TRITON_CMD"
-docker exec -it $CONTAINER_NAME bash -c "$TRITON_CMD"
+docker exec -it -d $CONTAINER_NAME bash -c "$TRITON_CMD"
 
 # # 스크립트가 여기까지 도달하면 서버 종료
 # echo "Triton 서버가 종료되었습니다."
