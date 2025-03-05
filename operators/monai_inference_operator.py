@@ -257,6 +257,9 @@ class MONAIInferenceOperator(Operator):
                             f"{InfererType.SLIDING_WINDOW!r} and {InfererType.SIMPLE!r}."
                         )
 
+                    if self.deep_supervision:
+                        d[self._pred_dataset_key] = d[self._pred_dataset_key][0]
+
                     d = [self.post_process(i) for i in decollate_batch(d)]
                     out_ndarray = d[0][self._pred_dataset_key].cpu().numpy()
                     # Need to squeeze out the channel dim fist

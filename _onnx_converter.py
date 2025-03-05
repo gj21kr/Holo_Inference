@@ -89,14 +89,14 @@ def main():
         output_path = Path(args.output)
     else:
         model_version = config.get("MODEL_VERSION", "default")
-        output_dir = Path("triton_model_repository") / "monai_segmentation" / "1"
-        output_dir.mkdir(parents=True, exist_ok=True)        
+        output_dir = Path("triton_model_repository") / args.config / "1"
+        output_dir.mkdir(parents=True, exist_ok=True)     
+        output_path = str(output_dir / f"model.onnx")   
     
     # 모델 로드
     model = call_model(config)
     model = load_saved_model(config, model)
     model.eval()  # 평가 모드로 설정
-    output_path = str(output_dir / f"{config['MODEL_VERSION']}.onnx")
     
     # ONNX로 변환
     convert_torch_to_onnx(model, config, output_path, args.verbose)

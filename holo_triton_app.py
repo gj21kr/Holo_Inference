@@ -17,7 +17,7 @@ from operators.data_io_operator import (
 )
 
 # Triton 클라이언트 연산자 가져오기
-from triton_inference_operator import TritonInferenceOperator
+from operators.triton_inference_operator import TritonInferenceOperator
 
 class HoloscanTritonApp(Application):
     def __init__(self, *args, **kwargs):
@@ -37,18 +37,18 @@ class HoloscanTritonApp(Application):
         
         # 명령줄 인수 파싱
         parser = argparse.ArgumentParser(description='Holoscan-Triton 세그멘테이션 작업자')
-        parser.add_argument('-i', type=str, help='입력 데이터 경로')
-        parser.add_argument('-o', type=str, help='출력 데이터 경로')
-        parser.add_argument('-c', type=str, help='설정 파일명')
+        parser.add_argument('-i', '--input_file', type=str, help='입력 데이터 경로')
+        parser.add_argument('-o', '--output_dir', type=str, help='출력 데이터 경로')
+        parser.add_argument('-c', '--configs', type=str, help='설정 파일명')
         parser.add_argument('-t', '--triton-url', type=str, default='localhost:8000', help='Triton 서버 URL')
         parser.add_argument('-m', '--model-name', type=str, default='monai_segmentation', help='모델 이름')
         
         args, unknown = parser.parse_known_args(self.argv)
         
         # 경로 설정
-        input_path = Path(args.i) if args.i else Path("./input")
-        output_path = Path(args.o) if args.o else Path("./output")
-        config_name = args.c if args.c else "default_config"
+        input_path = Path(args.input_file) 
+        output_path = Path(args.output_dir) 
+        config_name = args.configs 
         triton_url = args.triton_url
         model_name = args.model_name
         
