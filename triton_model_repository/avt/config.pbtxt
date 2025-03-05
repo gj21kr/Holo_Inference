@@ -1,17 +1,17 @@
 name: "avt"
-platform: "onnx"
+platform: "onnxruntime_onnx"
 max_batch_size: 1
 input [
   {
     name: "input"
-    data_type: TYPE_FP32
+    data_type: TYPE_FP16
     dims: [ 1, 96, 96, 96 ]
   }
 ]
 output [
   {
     name: "output"
-    data_type: TYPE_FP32
+    data_type: TYPE_FP16
     dims: [ 1, 96, 96, 96 ]
   }
 ]
