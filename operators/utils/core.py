@@ -20,8 +20,9 @@ import logging
 from os.path import abspath
 from typing import Dict, List, Optional, Tuple
 
-from .models.factory import ModelFactory
-from operator.utils.model import Model
+from operators.utils.factory import ModelFactory
+from operators.utils.model import Model
+from operators.utils import argparse_types
 
 import argparse
 import json
@@ -29,7 +30,6 @@ import logging.config
 from pathlib import Path
 from typing import List, Optional, Union
 
-from operators.medical_imaging.utils import argparse_types
 
 LOG_CONFIG_FILENAME = "logging.json"
 

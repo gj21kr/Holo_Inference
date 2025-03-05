@@ -1,18 +1,13 @@
-import torch
-import monai
-import nibabel as nib
-import numpy as np
 import os
 from typing import Dict, Sequence, Union
-from numpy import uint8
 import logging
 from collections.abc import Hashable, Mapping
+from threading import Lock
 
-# Import MONAI functions 
-from monai.transforms import (
-    Compose, Activationsd,
-    AsDiscreted, SaveImaged, MapTransform,
-)
+import torch
+import nibabel as nib
+import numpy as np
+from numpy import uint8
 
 # Import Holoscan base operator (the exact import may vary based on Holoscan version)
 from holoscan.core import ConditionType, Fragment, Operator, OperatorSpec
@@ -20,15 +15,30 @@ from holoscan.core import ConditionType, Fragment, Operator, OperatorSpec
 # Third-party
 from core.call import call_model
 from utils.utils import load_saved_model
-from utils.inferer import SlidingWindowInferer
 from transforms.call_preproc import call_trans_function
-from transforms.ImageProcessing import Antialiasingd    
+from transforms.ImageProcessing import Antialiasingd   
+from operators.utils.monai_inferer_operator import InfererType, InMemImageReader 
+
+# MONAI imports
+import monai
+from monai.transforms import (
+    Compose, Activationsd,
+    AsDiscreted, SaveImaged, MapTransform,
+)
+from monai.data import decollate_batch
+from monai.data import Dataset, DataLoader
+from monai.data import ImageReader as ImageReader_
+from monai.inferers import sliding_window_inference
+from monai.inferers import SimpleInferer as simple_inference
+from monai.transforms import Compose
+from monai.utils import MetaKeys, SpaceKeys, optional_import, ensure_tuple
+
 
 class MONAIInferenceOperator(Operator):
     def __init__(
         self,
         fragment: Fragment, *args,
-        config, model_version, output_dir, post_transforms, device="cuda", **kwargs):
+        config, model_version, output_dir, post_transforms, _inferer, **kwargs):
         
         self.input_name = 'image'
         self.output_name = 'prediction'
@@ -36,12 +46,20 @@ class MONAIInferenceOperator(Operator):
         self._input_dataset_key = "image"
         self._pred_dataset_key = "pred"
 
+        self._inferer = InfererType.SLIDING_WINDOW if _inferer=='sliding_window' else InfererType.SIMPLE
+
+        self._lock = Lock()
+        self._executing = False
+
         self.config = config
-            
+        self._roi_size = config.get("INPUT_SHAPE", (128, 128, 128))
+        self._overlap = 0.5
+        self._sw_batch_size = 1
+                    
         self.model_path=os.path.join('./models', model_version+'.pth'),
         self.output_dir = output_dir
-        self.device = device
-  
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
         if "AMP" in config.keys() and config["AMP"]==True:
             self.amp = True
             self.dtype = torch.float16
@@ -89,14 +107,6 @@ class MONAIInferenceOperator(Operator):
             ]
             self.post_process = Compose(self.post_transforms)
 
-        self.inferer = SlidingWindowInferer(
-            roi_size=config["INPUT_SHAPE"],
-            sw_batch_size=config["BATCH_SIZE"],
-            sw_device=torch.device("cuda"),
-            device=torch.device("cpu"),
-            overlap=0.5,
-            deep_supervision=self.deep_supervision
-        )
         super().__init__(fragment, *args, **kwargs)
 
     def setup(self, spec: OperatorSpec):
@@ -106,39 +116,150 @@ class MONAIInferenceOperator(Operator):
     def _load_model(self):
         self.model = load_saved_model(self.config, call_model(self.config))
 
-    @torch.no_grad()
-    def process(self, input_data):
+
+    @property
+    def roi_size(self):
+        """The ROI size of tensors used in prediction."""
+        return self._roi_size
+
+    @roi_size.setter
+    def roi_size(self, roi_size: Union[Sequence[int], int]):
+        self._roi_size = ensure_tuple(roi_size)
+
+    @property
+    def input_dataset_key(self):
+        """This is the input image key name used in dictionary based MONAI pre-transforms."""
+        return self._input_dataset_key
+
+    @input_dataset_key.setter
+    def input_dataset_key(self, val: str):
+        if not val or len(val) < 1:
+            raise ValueError("Value cannot be None or blank.")
+        self._input_dataset_key = val
+
+    @property
+    def pred_dataset_key(self):
+        """This is the prediction key name used in dictionary based MONAI post-transforms."""
+        return self._pred_dataset_key
+
+    @pred_dataset_key.setter
+    def pred_dataset_key(self, val: str):
+        if not val or len(val) < 1:
+            raise ValueError("Value cannot be None or blank.")
+        self._pred_dataset_key = val
+
+    @property
+    def overlap(self):
+        """This is the overlap used during sliding window inference"""
+        return self._overlap
+
+    @overlap.setter
+    def overlap(self, val: float):
+        if val < 0 or val > 1:
+            raise ValueError("Overlap must be between 0 and 1.")
+        self._overlap = val
+
+    @property
+    def sw_batch_size(self):
+        """The batch size to run window slices"""
+        return self._sw_batch_size
+
+    @sw_batch_size.setter
+    def sw_batch_size(self, val: int):
+        if not isinstance(val, int) or val < 0:
+            raise ValueError("sw_batch_size must be a positive integer.")
+        self._sw_batch_size = val
+
+    @property
+    def inferer(self) -> Union[InfererType, str]:
+        """The type of inferer to use"""
+        return self._inferer
+
+    @inferer.setter
+    def inferer(self, val: InfererType):
+        if not isinstance(val, InfererType):
+            raise ValueError(f"Value must be of the correct type {InfererType}.")
+        self._inferer = val
+
+    def compute(self, op_input, op_output, context):
+        """Infers with the input image and save the predicted image to output
+
+        Args:
+            op_input (InputContext): An input context for the operator.
+            op_output (OutputContext): An output context for the operator.
+            context (ExecutionContext): An execution context for the operator.
         """
-        input_data: expected to be a dictionary containing the DICOM image volume as a numpy array.
-        For example: {"image": image_array, "meta": meta_info}
-        """
 
-        # Run inference
-        with torch.autocast(enabled=self.amp, dtype=self.dtype, device_type='cuda'):	
-            image_tensor = torch.from_numpy(image).to(self.device)
-            if image_tensor.ndim == 3:
-                image_tensor = image_tensor.unsqueeze(0).unsqueeze(0)
-            elif image_tensor.ndim == 4:
-                image_tensor = image_tensor.unsqueeze(0)
-            # Delegates inference and saving output to the built-in operator.
-            infer_operator = MonaiSegInferenceOperator(
-                self.fragment,
-                roi_size=self.config["INPUT_SHAPE"],
-                pre_transforms=self.pre_transforms,
-                post_transforms=self.post_transforms,
-                overlap=0.5,
-                model=self.model,
-                inferer=InfererType.SLIDING_WINDOW,
-                sw_batch_size=1,
-                name="monai_seg_inference_op",
-            )
+        with self._lock:
+            if self._executing:
+                raise RuntimeError("Operator is already executing.")
+            else:
+                self._executing = True
+        try:
+            input_image = op_input.receive(self.input_name)
+            if input_image is None:
+                raise ValueError("Input is None.")
+            op_output.emit(self.compute_impl(input_image, context), self.output_name)
+        finally:
+            # Reset state on completing this method execution.
+            with self._lock:
+                self._executing = False
 
-            # Setting the keys used in the dictionary based transforms
-            infer_operator.input_dataset_key = self._input_dataset_key
-            infer_operator.pred_dataset_key = self._pred_dataset_key
+    def compute_impl(self, input_data, context):
+        if input_data is None:
+            raise ValueError("Input is None.")
 
-            # Now emit data to the output ports of this operator
-            op_output.emit(infer_operator.compute_impl(input_image, context), self.output_name)
-            self._logger.debug(
-                f"Setting {self.output_name_saved_images_folder} with {self.output_folder}"
-            )
+        input_image = input_data["image"]
+        input_img_metadata = input_data["meta"]
+        self._reader = InMemImageReader(input_image)
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        dataset = Dataset(data=[{self._input_dataset_key: input_image}], transform=self.pre_process)
+        dataloader = DataLoader(
+            dataset, batch_size=1, shuffle=False, num_workers=0
+        )  # Should the batch_size be dynamic?
+
+        with torch.no_grad():
+            for d in dataloader:
+                images = d[self._input_dataset_key].to(device)
+                if images.ndim == 3:
+                    images = images.unsqueeze(0).unsqueeze(0)
+                elif images.ndim == 4:
+                    images = images.unsqueeze(0)
+
+                if self._inferer == InfererType.SLIDING_WINDOW:
+                    d[self._pred_dataset_key] = sliding_window_inference(
+                        inputs=images,
+                        roi_size=self._roi_size,
+                        sw_batch_size=self.sw_batch_size,
+                        overlap=self.overlap,
+                        predictor=self.model,
+                    )
+                elif self._inferer == InfererType.SIMPLE:
+                    # Instantiates the SimpleInferer and directly uses its __call__ function
+                    d[self._pred_dataset_key] = simple_inference()(
+                        inputs=images, network=self.model
+                    )
+                else:
+                    raise ValueError(
+                        f"Unknown inferer: {self._inferer!r}. Available options are "
+                        f"{InfererType.SLIDING_WINDOW!r} and {InfererType.SIMPLE!r}."
+                    )
+
+                d = [self.post_process(i) for i in decollate_batch(d)]
+                out_ndarray = d[0][self._pred_dataset_key].cpu().numpy()
+                # Need to squeeze out the channel dim fist
+                out_ndarray = np.squeeze(out_ndarray, 0)
+                # NOTE: The domain Image object simply contains a Arraylike obj as image as of now.
+                #       When the original DICOM series is converted by the Series to Volume operator,
+                #       using pydicom pixel_array, the 2D ndarray of each slice has index order HW, and
+                #       when all slices are stacked with depth as first axis, DHW. In the pre-transforms,
+                #       the image gets transposed to WHD and used as such in the inference pipeline.
+                #       So once post-transforms have completed, and the channel is squeezed out,
+                #       the resultant ndarray for the prediction image needs to be transposed back, so the
+                #       array index order is back to DHW, the same order as the in-memory input Image obj.
+                out_ndarray = out_ndarray.T.astype(np.uint8)
+                self._logger.info(f"Output Seg image numpy array shaped: {out_ndarray.shape}")
+                self._logger.info(f"Output Seg image pixel max value: {np.amax(out_ndarray)}")
+
+                return Image(out_ndarray, input_img_metadata)

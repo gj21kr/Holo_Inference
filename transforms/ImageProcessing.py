@@ -32,6 +32,13 @@ __all__ = [
     "Antialiasingd"
 ]
 
+def _to_tensor(data):
+    if isinstance(data, torch.Tensor):
+        return data
+    elif isinstance(data, np.ndarray):
+        return torch.from_numpy(data)
+    else:
+        raise ValueError(f"Unsupported data type: {type(data)}")
 
 # from https://github.com/Project-MONAI/MONAI/issues/3178
 class Antialiasingd(MapTransform):
@@ -51,7 +58,7 @@ class Antialiasingd(MapTransform):
     def __call__(self, data: Mapping[Hashable, NdarrayTensor]) -> Dict[Hashable, NdarrayTensor]:
         d = dict(data)
         for key in self.key_iterator(d):
-            img = d[key]
+            img = _to_tensor(d[key])
 
             gaussian_filter = GaussianFilter(img.ndim - 1, self.sigma, approx=self.approx)
 
@@ -73,7 +80,7 @@ class DuplicateChanneld(MapTransform):
     def __call__(self, data: Mapping[Hashable, np.ndarray]) -> Mapping[Hashable, np.ndarray]:
         d = dict(data)
         for key in self.keys:
-            d[key] = torch.cat([d[key]]*self.target_channels, dim=0)
+            d[key] = torch.cat([_to_tensor(d[key])]*self.target_channels, dim=0)
         return d
 
 class RandMultiWindowingd(MapTransform):
@@ -85,7 +92,7 @@ class RandMultiWindowingd(MapTransform):
         d = dict(data)
         for k in self.keys:
             orig_shape = d[k].shape
-            img = self.windowing(d[k])
+            img = self.windowing(_to_tensor(d[key]))
             d[k] = torch.stack(img, dim=0)
             # print(f"MultiWindowing: {orig_shape} -> {d[k].shape}")
         return d
@@ -107,6 +114,7 @@ class RandMultiWindowing(Transform):
             output_nums = 3
         self.output_nums = output_nums
     def __call__(self, img):
+        img = _to_tensor(img)
         nums = [0]+list(np.random.randint(self.ranges[0], self.ranges[1], self.output_nums-1))
         return [self.znorm(img, [self.window[0]-num, self.window[1]+num]) for num in nums]
 
@@ -117,6 +125,7 @@ class TargetMultiWindowing(Transform):
         self.znorm = ZNormalization(contrast=window)
         self.nums = [0]+list(np.random.randint(ranges[0], ranges[1], output_nums-1))
     def __call__(self, img):
+        img = _to_tensor(img)
         return [self.znorm(img, [self.window[0]-num, self.window[1]+num]) for num in self.nums]
 
 class TargetMultiWindowingd(MapTransform):
@@ -253,6 +262,7 @@ class ZNormalization(Transform):
     def __call__(self, img, new_contrast=None):    
         if new_contrast is not None:
             self.contrast = new_contrast    
+        img = _to_tensor(img).float()
         img = torch.clamp(img, min=self.contrast[0], max=self.contrast[1])
 
         mean_ = torch.mean(img)
@@ -273,8 +283,7 @@ class ZNormalizationd(MapTransform):
     def __call__(self, data):
         d = dict(data)
         for k in self.keys:
-            img = d[k]
-            d[k] = self.transform(img)
+            d[k] = self.transform(_to_tensor(d[k]))
 
         return d
 

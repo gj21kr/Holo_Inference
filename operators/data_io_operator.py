@@ -68,10 +68,13 @@ class ImageLoaderOperator(Operator):
         patient_id = os.path.basename(input_data).split('.')[0]
         if self._image_reader == 'pydicom':
             input_data = self._pydicom_reader(input_data)
+            transformed = False
         elif self._image_reader == 'nrrd':
             input_data = self._nrrd_reader(input_data)
+            transformed = False
         else:
             input_data = self._sitk_reader(input_data)
+            transformed = True
 
         # Construct metadata dictionary
         self.meta.update({
@@ -85,7 +88,7 @@ class ImageLoaderOperator(Operator):
         affine = self.calculate_affine_matrix()
 
         # Output dictionary for downstream operators
-        output = {"image": input_data, "meta": self.meta, "transform": self.transform, "affine": affine}
+        output = {"image": input_data, "meta": self.meta, "transformed":transformed, "affine": affine}
         op_output.emit(output, self.output_name)
 
     def calculate_affine_matrix(self):

@@ -37,7 +37,6 @@ class MonaiSegmentationApp(Application):
         parser.add_argument('-i', type=str, help='Input data path')
         parser.add_argument('-o', type=str, help='Output data path')
         parser.add_argument('-c', type=str, help='Config file name')
-        parser.add_argument('-g', type=str, help='GPUs', default='0')
         
         args, unknown = parser.parse_known_args(self.argv)
         
@@ -71,6 +70,7 @@ class MonaiSegmentationApp(Application):
             model_version=config.get("MODEL_VERSION", "default"),
             output_dir=output_path,
             post_transforms=transform,
+            _inferer='sliding_window',
             name="monai_inference_op"
         )
 

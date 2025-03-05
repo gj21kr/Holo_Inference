@@ -18,7 +18,7 @@ import os.path
 from pathlib import Path
 from typing import Any, Dict, ItemsView, List, Tuple
 
-from operators.medical_imaging.exceptions import ItemNotExistsError, UnknownTypeError
+from operators.utils.exceptions import ItemNotExistsError, UnknownTypeError
 
 # Store all supported model types in the order they should be checked
 REGISTERED_MODELS = []
