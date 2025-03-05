@@ -52,9 +52,9 @@ class MONAIInferenceOperator(Operator):
         self._executing = False
 
         self.config = config
-        self._roi_size = config.get("INPUT_SHAPE", (128, 128, 128))
+        self._roi_size = config.get("INPUT_SHAPE", (96, 96, 96))
         self._overlap = 0.5
-        self._sw_batch_size = 1
+        self._sw_batch_size = 4
                     
         self.model_path=os.path.join('./models', model_version+'.pth'),
         self.output_dir = output_dir
