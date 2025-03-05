@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Triton 서버 시작 스크립트
-MODEL_REPOSITORY=/triton_model_repository
+MODEL_REPOSITORY=./triton_model_repository
 
 # 도커를 통해 Triton 서버 실행
-docker run --gpus all -it --rm \
+docker run --runtime=nvidia -it --rm \
     -p 8000:8000 \
     -p 8001:8001 \
     -p 8002:8002 \

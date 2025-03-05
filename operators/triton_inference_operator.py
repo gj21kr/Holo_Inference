@@ -103,17 +103,17 @@ class TritonInferenceOperator(Operator):
         # 추론 요청 보내기
         self._logger.info(f"Triton 서버로 추론 요청 전송 중 ({self.model_name})...")
         
-        try:
-            response = client.infer(
-                model_name=self.model_name,
-                model_version=self.model_version,
-                inputs=inputs,
-                outputs=outputs,
-                client_timeout=self.timeout
-            )
-        except Exception as e:
-            self._logger.error(f"추론 중 오류 발생: {e}")
-            raise
+        # try:
+        response = client.infer(
+            model_name=self.model_name,
+            model_version=self.model_version,
+            inputs=inputs,
+            outputs=outputs,
+            timeout=self.timeout
+        )
+        # except Exception as e:
+        #     self._logger.error(f"추론 중 오류 발생: {e}")
+        #     raise
         
         # 추론 결과 처리
         result = response.as_numpy(self.output_name)
