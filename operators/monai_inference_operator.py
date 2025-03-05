@@ -230,11 +230,21 @@ class MONAIInferenceOperator(Operator):
                 if self._inferer == InfererType.SLIDING_WINDOW:
                     d[self._pred_dataset_key] = sliding_window_inference(
                         inputs=images,
-                        roi_size=self._roi_size,
+                        roi_size=self.roi_size,
+                        mode="gaussian",
+                        progress=True,
                         sw_batch_size=self.sw_batch_size,
                         overlap=self.overlap,
                         predictor=self.model,
                     )
+                    # d[self._pred_dataset_key] = SlidingWindowInfererAdapt(
+                    #     roi_size=self.roi_size,
+                    #     mode="gaussian",
+                    #     progress=True,
+                    #     sw_batch_size=self.sw_batch_size,
+                    #     overlap=self.overlap,
+                    #     predictor=self.model,
+                    # )(images)
                 elif self._inferer == InfererType.SIMPLE:
                     # Instantiates the SimpleInferer and directly uses its __call__ function
                     d[self._pred_dataset_key] = simple_inference()(
