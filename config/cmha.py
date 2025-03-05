@@ -1,8 +1,9 @@
 config = {
     "CHANNEL_IN"    : 1,
-    "CHANNEL_OUT"   : 1,
+    "CHANNEL_OUT"   : 2,
     "CLASSES"       : {
-            1:"CT_Cerebral_Artery"
+            1: "Brain",
+            2: "CT_Cerebral_Artery"
         },
     "interp_mode"   : "trilinear_trilinear",
     "MODEL_NAME"    : "nnunet",
