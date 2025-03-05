@@ -54,7 +54,7 @@ class MONAIInferenceOperator(Operator):
         self.config = config
         self._roi_size = config.get("INPUT_SHAPE", (96, 96, 96))
         self._overlap = 0.25
-        self._sw_batch_size = 12
+        self._sw_batch_size = 4
                     
         self.model_path=os.path.join('./models', model_version+'.pth'),
         self.output_dir = output_dir
@@ -229,23 +229,23 @@ class MONAIInferenceOperator(Operator):
                         images = images.unsqueeze(0)
 
                     if self._inferer == InfererType.SLIDING_WINDOW:
-                        d[self._pred_dataset_key] = sliding_window_inference(
-                            inputs=images,
-                            roi_size=self.roi_size,
-                            mode="gaussian",
-                            progress=True,
-                            sw_batch_size=self.sw_batch_size,
-                            overlap=self.overlap,
-                            predictor=self.model,
-                        )
-                        # d[self._pred_dataset_key] = SlidingWindowInfererAdapt(
+                        # d[self._pred_dataset_key] = sliding_window_inference(
+                        #     inputs=images,
                         #     roi_size=self.roi_size,
                         #     mode="gaussian",
                         #     progress=True,
                         #     sw_batch_size=self.sw_batch_size,
                         #     overlap=self.overlap,
                         #     predictor=self.model,
-                        # )(images)
+                        # )
+                        d[self._pred_dataset_key] = SlidingWindowInfererAdapt(
+                            roi_size=self.roi_size,
+                            mode="gaussian",
+                            progress=True,
+                            sw_batch_size=self.sw_batch_size,
+                            overlap=self.overlap,
+                            predictor=self.model,
+                        )(images)
                     elif self._inferer == InfererType.SIMPLE:
                         # Instantiates the SimpleInferer and directly uses its __call__ function
                         d[self._pred_dataset_key] = simple_inference()(
