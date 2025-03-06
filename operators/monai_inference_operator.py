@@ -18,7 +18,6 @@ from utils.utils import load_saved_model
 from transforms.call_preproc import call_trans_function
 from transforms.ImageProcessing import Antialiasingd   
 from operators.utils.monai_inferer_operator import InfererType, InMemImageReader 
-from utils.inferer import sliding_window_inference
 from operators.utils.image import Image
 
 # MONAI imports
@@ -31,7 +30,7 @@ from monai.data import decollate_batch
 from monai.data import Dataset, DataLoader
 from monai.data import ImageReader as ImageReader_
 from monai.inferers import sliding_window_inference, SlidingWindowInfererAdapt
-# from monai.inferers import SimpleInferer as simple_inference
+from monai.inferers import SimpleInferer as simple_inference
 from monai.transforms import Compose
 from monai.utils import MetaKeys, SpaceKeys, optional_import, ensure_tuple
 
@@ -55,7 +54,7 @@ class MONAIInferenceOperator(Operator):
         self.config = config
         self._roi_size = config.get("INPUT_SHAPE", (96, 96, 96))
         self._overlap = 0.25
-        self._sw_batch_size = 4
+        self._sw_batch_size = config.get("BATCH_SIZE", 4)
                     
         self.model_path=os.path.join('./models', model_version+'.pth'),
         self.output_dir = output_dir
@@ -281,4 +280,4 @@ class MONAIInferenceOperator(Operator):
                     out_ndarray = d[0][self._pred_dataset_key].cpu().numpy()
                     # out_ndarray = np.squeeze(out_ndarray, 0)
                     
-                    return out_ndarray
+        return {"image":out_ndarray, "meta":input_img_metadata}

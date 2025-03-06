@@ -43,9 +43,11 @@ class ImageLoaderOperator(Operator):
 
     def _nrrd_reader(self, input_path):
         img, header = nrrd.read(input_path)
-        self.spacing = header["space directions"]
+        affine = header["space directions"]
         self.origin = header["space origin"]
-        self.direction = header["space directions"]
+        # convert affine to SimpleITK style direction
+        self.spacing = np.sqrt((affine ** 2).sum(axis=0))
+        self.direction = (affine / self.spacing).flatten()
         img = orientation(
             img, transpose=self.meta["TRANSPOSE"][0]
         )	
@@ -74,7 +76,7 @@ class ImageLoaderOperator(Operator):
             transformed = False
         elif self._image_reader == 'nrrd':
             input_data = self._nrrd_reader(input_data)
-            transformed = False
+            transformed = True
         else:
             input_data = self._sitk_reader(input_data)
             transformed = True
@@ -126,20 +128,21 @@ class ImageSaverOperator(Operator):
         self.input_name = "image"
         super().__init__(fragment, *args, **kwargs)
 
-    def saver(self, this_class_data, transpose, spacing, origin, direction, output_dir, class_name):
-        this_class_data = orientation(
-            this_class_data, transpose=transpose
-        )	
-        if this_class_data.ndim==4:
-            this_class_data = this_class_data[0]
+    def saver(self, this_class_data, spacing, origin, direction, transformed, transpose, output_dir, class_name):
+        if transformed:
+            this_class_data = orientation(
+                this_class_data, transpose=transpose
+            )
         if this_class_data.dtype!=np.uint8:
             this_class_data = this_class_data.astype(np.uint8)
-            
+
         img = sitk.GetImageFromArray(this_class_data)
         img.SetSpacing(spacing)
         img.SetOrigin(origin)
         img.SetDirection(direction)
 
+        if not os.path.isdir(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, class_name+'.nii.gz')
         sitk.WriteImage(img, output_path)
 
@@ -152,19 +155,16 @@ class ImageSaverOperator(Operator):
             raise ValueError("Input image is not found.")
 
         for i, class_name in enumerate(input_data["meta"]["CLASSES"].values()):		
-            if input_data["meta"]["TransformedFromLoader"]:
-                input_data["image"][i] = orientation(
-                    input_data["image"][i], transpose=input_data["meta"]["TRANSPOSE"][1]
-                )
             self.saver(
                 input_data["image"][i],
-                input_data["meta"]["TRANSPOSE"][1],
                 input_data["meta"]["PixelSpacing"],
                 input_data["meta"]["Origin"],
                 input_data["meta"]["Direction"],
-                output_dir, class_name)
+                input_data["meta"]["TransformedFromLoader"],
+                input_data["meta"]["TRANSPOSE"][1],
+                self.output_dir, class_name)
 
-        print(f"✅ Image successfully saved at: {output_path}")
+        print(f"✅ Image successfully saved at: {self.output_dir}")
         return True
 
 

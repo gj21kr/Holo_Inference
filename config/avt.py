@@ -12,7 +12,7 @@ config = {
     "DROPOUT"       : 0.,
     "CONTRAST"      : [-1000,2000],
     "INT_NORM"      : 'znorm',
-    "BATCH_SIZE"    : 1,
+    "BATCH_SIZE"    : 8,
     "ACTIVATION"    : 'sigmoid',
     "MODE"          : 'None',
     "WEIGHTS"       : [1.0],
