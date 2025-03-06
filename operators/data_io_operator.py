@@ -46,6 +46,9 @@ class ImageLoaderOperator(Operator):
         self.spacing = header["space directions"]
         self.origin = header["space origin"]
         self.direction = header["space directions"]
+        img = orientation(
+            img, transpose=self.meta["TRANSPOSE"][0]
+        )	
         return img
 
     def _sitk_reader(self, input_path):
@@ -82,13 +85,14 @@ class ImageLoaderOperator(Operator):
             "InferenceDate": time.strftime("%Y-%m-%d"),
             "PixelSpacing": self.spacing,
             "Origin": self.origin,
-            "Direction": self.direction
+            "Direction": self.direction,
+            "TransformedFromLoader": transformed
         })
         # calculate affine 
         affine = self.calculate_affine_matrix()
 
         # Output dictionary for downstream operators
-        output = {"image": input_data, "meta": self.meta, "transformed":transformed, "affine": affine}
+        output = {"image": input_data, "meta": self.meta, "affine": affine}
         op_output.emit(output, self.output_name)
 
     def calculate_affine_matrix(self):
@@ -144,10 +148,14 @@ class ImageSaverOperator(Operator):
 
     def compute(self, op_input, op_output, context):
         input_data = op_input.receive(self.input_name)
-        if not input_data:
+        if input_data is None:
             raise ValueError("Input image is not found.")
 
         for i, class_name in enumerate(input_data["meta"]["CLASSES"].values()):		
+            if input_data["meta"]["TransformedFromLoader"]:
+                input_data["image"][i] = orientation(
+                    input_data["image"][i], transpose=input_data["meta"]["TRANSPOSE"][1]
+                )
             self.saver(
                 input_data["image"][i],
                 input_data["meta"]["TRANSPOSE"][1],

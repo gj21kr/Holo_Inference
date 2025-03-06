@@ -18,6 +18,8 @@ from utils.utils import load_saved_model
 from transforms.call_preproc import call_trans_function
 from transforms.ImageProcessing import Antialiasingd   
 from operators.utils.monai_inferer_operator import InfererType, InMemImageReader 
+from utils.inferer import sliding_window_inference
+from operators.utils.image import Image
 
 # MONAI imports
 import monai
@@ -28,11 +30,10 @@ from monai.transforms import (
 from monai.data import decollate_batch
 from monai.data import Dataset, DataLoader
 from monai.data import ImageReader as ImageReader_
-from monai.inferers import sliding_window_inference
-from monai.inferers import SimpleInferer as simple_inference
+from monai.inferers import sliding_window_inference, SlidingWindowInfererAdapt
+# from monai.inferers import SimpleInferer as simple_inference
 from monai.transforms import Compose
 from monai.utils import MetaKeys, SpaceKeys, optional_import, ensure_tuple
-
 
 class MONAIInferenceOperator(Operator):
     def __init__(
@@ -81,7 +82,7 @@ class MONAIInferenceOperator(Operator):
             if config["ACTIVATION"].lower()=='sigmoid':
                 self.post_transforms = [
                     Activationsd(keys=self._pred_dataset_key, sigmoid=True),
-                    AsDiscreted(keys=self._pred_dataset_key, argmax=True),
+                    AsDiscreted(keys=self._pred_dataset_key, argmax=False, threshold=config["THRESHOLD"]),
                     ] 
             elif config["ACTIVATION"].lower()=='softmax':
                 self.post_transforms = [
@@ -94,16 +95,16 @@ class MONAIInferenceOperator(Operator):
                 Antialiasingd(
                     keys=self._pred_dataset_key,
                 ),
-                # The SaveImaged transform can be commented out to save 5 seconds.
-                # Uncompress NIfTI file, nii, is used favoring speed over size, but can be changed to nii.gz
-                SaveImaged(
-                    keys=self._pred_dataset_key,
-                    output_dir=self.output_dir,
-                    output_postfix="seg",
-                    output_dtype=uint8,
-                    resample=False,
-                    output_ext=".nii",
-                ),
+                # # The SaveImaged transform can be commented out to save 5 seconds.
+                # # Uncompress NIfTI file, nii, is used favoring speed over size, but can be changed to nii.gz
+                # SaveImaged(
+                #     keys=self._pred_dataset_key,
+                #     output_dir=self.output_dir,
+                #     output_postfix="seg",
+                #     output_dtype=uint8,
+                #     resample=False,
+                #     output_ext=".nii.gz",
+                # ),
             ]
             self.post_process = Compose(self.post_transforms)
 
@@ -220,32 +221,48 @@ class MONAIInferenceOperator(Operator):
         )  # Should the batch_size be dynamic?
 
         with torch.no_grad():
-            with torch.amp.autocast(self.device, enabled=self.amp):
+            with torch.amp.autocast(self.device, enabled=self.amp, dtype=self.dtype):
+                self.model.eval()
+                self.model.to(device)
                 for d in dataloader:
-                    images = d[self._input_dataset_key].to(device)
+                    images = d[self._input_dataset_key]
+
+                    # size_bytes = images.element_size() * images.nelement()
+                    # torch.cuda.empty_cache()
+                    # print(torch.cuda.memory_summary(device=device, abbreviated=True))
+                    # total_memory = torch.cuda.get_device_properties(device=device).total_memory / 1024**3
+                    # print(f"Total memory: {total_memory:.4f} GB")
+                    # print(f"Allocated memory: {torch.cuda.memory_allocated(device=device)/ 1024**3:.4f} GB")   
+                    # print(f"Reserved memory: {torch.cuda.memory_reserved(device=device)/ 1024**3:.4f} GB")
+                    # print(f"Max memory: {torch.cuda.max_memory_allocated(device=device)/ 1024**3:.4f} GB")
+                    # print(f"Max reserved memory: {torch.cuda.max_memory_reserved(device=device)/ 1024**3:.4f} GB") 
+                    # print(f"Available memory: {total_memory - torch.cuda.memory_allocated(device=device)/ 1024**3:.4f} GB")
+                    # print(f"Tensor size: {size_bytes / (1024**2):.2f} MB, {size_bytes / (1024**3):.4f} GB")
+
                     if images.ndim == 3:
                         images = images.unsqueeze(0).unsqueeze(0)
                     elif images.ndim == 4:
                         images = images.unsqueeze(0)
 
                     if self._inferer == InfererType.SLIDING_WINDOW:
-                        # d[self._pred_dataset_key] = sliding_window_inference(
-                        #     inputs=images,
-                        #     roi_size=self.roi_size,
-                        #     mode="gaussian",
-                        #     progress=True,
-                        #     sw_batch_size=self.sw_batch_size,
-                        #     overlap=self.overlap,
-                        #     predictor=self.model,
-                        # )
-                        d[self._pred_dataset_key] = SlidingWindowInfererAdapt(
+                        d[self._pred_dataset_key] = sliding_window_inference(
+                            inputs=images,
                             roi_size=self.roi_size,
                             mode="gaussian",
                             progress=True,
+                            sw_device='cuda',
+                            device='cpu',
                             sw_batch_size=self.sw_batch_size,
                             overlap=self.overlap,
                             predictor=self.model,
-                        )(images)
+                        )
+                        # d[self._pred_dataset_key] = SlidingWindowInfererAdapt(
+                        #     roi_size=self.roi_size,
+                        #     # mode="gaussian",
+                        #     progress=True,
+                        #     sw_batch_size=self.sw_batch_size,
+                        #     overlap=self.overlap,
+                        # )(inputs=images, network=self.model)
                     elif self._inferer == InfererType.SIMPLE:
                         # Instantiates the SimpleInferer and directly uses its __call__ function
                         d[self._pred_dataset_key] = simple_inference()(
@@ -259,21 +276,9 @@ class MONAIInferenceOperator(Operator):
 
                     if self.deep_supervision:
                         d[self._pred_dataset_key] = d[self._pred_dataset_key][0]
-
-                    d = [self.post_process(i) for i in decollate_batch(d)]
+                    
+                    d = [self.post_process(i) for i in decollate_batch(d)]                    
                     out_ndarray = d[0][self._pred_dataset_key].cpu().numpy()
-                    # Need to squeeze out the channel dim fist
-                    out_ndarray = np.squeeze(out_ndarray, 0)
-                    # NOTE: The domain Image object simply contains a Arraylike obj as image as of now.
-                    #       When the original DICOM series is converted by the Series to Volume operator,
-                    #       using pydicom pixel_array, the 2D ndarray of each slice has index order HW, and
-                    #       when all slices are stacked with depth as first axis, DHW. In the pre-transforms,
-                    #       the image gets transposed to WHD and used as such in the inference pipeline.
-                    #       So once post-transforms have completed, and the channel is squeezed out,
-                    #       the resultant ndarray for the prediction image needs to be transposed back, so the
-                    #       array index order is back to DHW, the same order as the in-memory input Image obj.
-                    out_ndarray = out_ndarray.T.astype(np.uint8)
-                    self._logger.info(f"Output Seg image numpy array shaped: {out_ndarray.shape}")
-                    self._logger.info(f"Output Seg image pixel max value: {np.amax(out_ndarray)}")
-
-                    return Image(out_ndarray, input_img_metadata)
+                    # out_ndarray = np.squeeze(out_ndarray, 0)
+                    
+                    return out_ndarray

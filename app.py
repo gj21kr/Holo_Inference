@@ -74,15 +74,22 @@ class MonaiSegmentationApp(Application):
             name="monai_inference_op"
         )
 
-        result_display_op = ResultDisplayOperator(
+        image_saver_op = ImageSaverOperator(
             self,
-            display_interval=1.0,
-            name="result_display_op"
+            output_dir=output_path,
+            name="image_saver_op"
         )
+
+        # result_display_op = ResultDisplayOperator(
+        #     self,
+        #     display_interval=1.0,
+        #     name="result_display_op"
+        # )
         
         # Connect operators in the flow
         self.add_flow(image_loader_op, inference_op, {(image_loader_op.output_name, inference_op.input_name)})
-        self.add_flow(inference_op, result_display_op, {(inference_op.output_name, result_display_op.input_name)})
+        self.add_flow(inference_op, image_saver_op, {(inference_op.output_name, image_saver_op.input_name)})
+        # self.add_flow(inference_op, result_display_op, {(inference_op.output_name, result_display_op.input_name)})
         
         self._logger.debug(f"End {self.compose.__name__}")
 
