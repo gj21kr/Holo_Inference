@@ -30,7 +30,8 @@ class ImageLoaderOperator(Operator):
             self._image_reader = 'nrrd'
         else: 
             self._image_reader = 'sitk'
-
+            
+        self.shape = (512, 512, 512)
         self.spacing = (1,1,1)
         self.origin = (0,0,0)
         self.direction = (1,0,0,0,1,0,0,0,1)
@@ -45,6 +46,7 @@ class ImageLoaderOperator(Operator):
         img, header = nrrd.read(input_path)
         affine = header["space directions"]
         self.origin = header["space origin"]
+        self.shape = img.shape
         # convert affine to SimpleITK style direction
         self.spacing = np.sqrt((affine ** 2).sum(axis=0))
         self.direction = (affine / self.spacing).flatten()
@@ -60,6 +62,7 @@ class ImageLoaderOperator(Operator):
         self.direction = img.GetDirection()
             
         input_data = sitk.GetArrayFromImage(img)
+        self.shape = input_data.shape
         input_data = orientation(
             input_data, transpose=self.meta["TRANSPOSE"][0]
         )	
@@ -167,43 +170,3 @@ class ImageSaverOperator(Operator):
         print(f"✅ Image successfully saved at: {self.output_dir}")
         return True
 
-
-########################################
-# ResultDisplayOperator
-########################################
-class ResultDisplayOperator(Operator):
-    """
-    A simple result display operator that receives a dictionary containing segmentation results.
-    It then displays or saves the segmentation using matplotlib.
-    """
-    def __init__(
-        self,
-        fragment: Fragment, *args, display_interval=1.0, **kwargs):
-        self.display_interval = display_interval  # seconds between displays
-        self.input_name = "segmentation"
-        super().__init__(fragment, *args, **kwargs)
-
-    def setup(self, spec: OperatorSpec):
-        spec.input(self.input_name)
-
-    def compute(self, op_input, op_output, context):
-        # Expect input_data to be a dictionary containing "segmentation"
-        segmentation = op_input.receive(self.input_name)
-        if not segmentation:
-            raise ValueError("Input segmentation is not found.")
-
-        # Assume segmentation is a 2D array (if 3D, you may select a slice)
-        if segmentation.ndim == 3:
-            # For example, select the middle slice along the depth axis:
-            slice_idx = segmentation.shape[0] // 2
-            segmentation_to_show = segmentation[slice_idx]
-        else:
-            segmentation_to_show = segmentation
-
-        plt.figure(figsize=(6, 6))
-        plt.imshow(segmentation_to_show, cmap="gray")
-        plt.title("Segmentation Result")
-        plt.axis("off")
-        plt.show(block=False)
-        plt.pause(self.display_interval)
-        plt.close()

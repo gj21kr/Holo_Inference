@@ -12,9 +12,9 @@ from holoscan.conditions import CountCondition
 from operators.monai_inference_operator import MONAIInferenceOperator
 from operators.data_io_operator import (
     ImageLoaderOperator, 
-    ImageSaverOperator,
-    ResultDisplayOperator
+    ImageSaverOperator
 )
+from operators.volume_rendering_operator import IntegratedVolumeRendererOp
 
 class MonaiSegmentationApp(Application):
     def __init__(self, *args, **kwargs):
@@ -80,17 +80,38 @@ class MonaiSegmentationApp(Application):
             name="image_saver_op"
         )
 
-        # result_display_op = ResultDisplayOperator(
-        #     self,
-        #     display_interval=1.0,
-        #     name="result_display_op"
-        # )
+        holoviz_op = IntegratedVolumeRendererOp(
+            self,
+            render_config_file=None,
+            render_preset_files=None,
+            density_min=None,
+            density_max=None,
+            alloc_width=1024,
+            alloc_height=768,
+            window_title="Volume Rendering with ClaraViz",
+            name="holoviz_op"
+        )
         
         # Connect operators in the flow
         self.add_flow(image_loader_op, inference_op, {(image_loader_op.output_name, inference_op.input_name)})
         self.add_flow(inference_op, image_saver_op, {(inference_op.output_name, image_saver_op.input_name)})
-        # self.add_flow(inference_op, result_display_op, {(inference_op.output_name, result_display_op.input_name)})
-        
+        self.add_flow(
+            inference_op,
+            volume_renderer,
+            {
+                (image_loader_op.output_name, "density_volume"),
+                (image_loader_op.spacing, "density_spacing"),
+            },
+        )
+        self.add_flow(
+            inference_op,
+            volume_renderer,
+            {
+                (image_loader_op.output_name, "mask_volume"),
+                (image_loader_op.spacing, "mask_spacing"),
+            },
+        )
+
         self._logger.debug(f"End {self.compose.__name__}")
 
 
