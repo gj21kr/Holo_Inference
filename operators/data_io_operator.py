@@ -50,9 +50,12 @@ class ImageLoaderOperator(Operator):
         # convert affine to SimpleITK style direction
         self.spacing = np.sqrt((affine ** 2).sum(axis=0))
         self.direction = (affine / self.spacing).flatten()
-        img = orientation(
-            img, transpose=self.meta["TRANSPOSE"][0]
-        )	
+        print("image loaded")
+        print(img.shape, self.spacing, self.origin)
+        # img = orientation(
+        #     img, transpose=self.meta["TRANSPOSE"][0]
+        # )	
+        # print(self.meta["TRANSPOSE"])
         return img
 
     def _sitk_reader(self, input_path):
@@ -79,7 +82,7 @@ class ImageLoaderOperator(Operator):
             transformed = False
         elif self._image_reader == 'nrrd':
             input_data = self._nrrd_reader(input_data)
-            transformed = True
+            transformed = False
         else:
             input_data = self._sitk_reader(input_data)
             transformed = True

@@ -22,7 +22,7 @@ from holoscan.core import Operator, OperatorSpec
 from holoscan.resources import CudaStreamPool, UnboundedAllocator
 
 # Import operators from holohub
-from holohub.volume_renderer import VolumeRendererOp
+from operators.volume_renderer import VolumeRendererOp
 
 logger = logging.getLogger("integrated_volume_rendering")
 
