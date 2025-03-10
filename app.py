@@ -6,6 +6,9 @@ import argparse
 import importlib
 from pathlib import Path
 
+# from utils.setup_paths import setup_paths
+# setup_paths()
+
 from holoscan.core import Application
 from holoscan.conditions import CountCondition
 
