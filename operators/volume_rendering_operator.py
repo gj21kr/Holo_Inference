@@ -22,7 +22,9 @@ from holoscan.core import Operator, OperatorSpec
 from holoscan.resources import CudaStreamPool, UnboundedAllocator
 
 # Import operators from holohub
-from operators.volume_renderer import VolumeRendererOp
+import sys
+sys.path.append("/home/xcath-ai/Documents/holohub/applications/volume_renderer/python")
+from volume_renderer import VolumeRendererOp
 
 logger = logging.getLogger("integrated_volume_rendering")
 

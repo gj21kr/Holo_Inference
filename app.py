@@ -17,8 +17,11 @@ from operators.data_io_operator import (
     ImageLoaderOperator, 
     ImageSaverOperator
 )
-# from operators.volume_rendering_operator import IntegratedVolumeRendererOp
+from operators.volume_rendering_operator import IntegratedVolumeRendererOp
 
+import torch
+torch.backends.cudnn.enabled = True
+torch.backends.cudnn.benchmark = True
 class MonaiSegmentationApp(Application):
     def __init__(self, *args, **kwargs):
         """Creates an application instance."""
