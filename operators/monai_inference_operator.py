@@ -220,64 +220,64 @@ class MONAIInferenceOperator(Operator):
         )  # Should the batch_size be dynamic?
 
         with torch.no_grad():
-            with torch.amp.autocast(self.device, enabled=self.amp, dtype=self.dtype):
-                self.model.eval()
-                self.model.to(device)
-                for d in dataloader:
-                    images = d[self._input_dataset_key]
+            # with torch.amp.autocast(self.device, enabled=self.amp, dtype=self.dtype):
+            self.model.eval()
+            self.model.to(device)
+            for d in dataloader:
+                images = d[self._input_dataset_key]
 
-                    # size_bytes = images.element_size() * images.nelement()
-                    # torch.cuda.empty_cache()
-                    # print(torch.cuda.memory_summary(device=device, abbreviated=True))
-                    # total_memory = torch.cuda.get_device_properties(device=device).total_memory / 1024**3
-                    # print(f"Total memory: {total_memory:.4f} GB")
-                    # print(f"Allocated memory: {torch.cuda.memory_allocated(device=device)/ 1024**3:.4f} GB")   
-                    # print(f"Reserved memory: {torch.cuda.memory_reserved(device=device)/ 1024**3:.4f} GB")
-                    # print(f"Max memory: {torch.cuda.max_memory_allocated(device=device)/ 1024**3:.4f} GB")
-                    # print(f"Max reserved memory: {torch.cuda.max_memory_reserved(device=device)/ 1024**3:.4f} GB") 
-                    # print(f"Available memory: {total_memory - torch.cuda.memory_allocated(device=device)/ 1024**3:.4f} GB")
-                    # print(f"Tensor size: {size_bytes / (1024**2):.2f} MB, {size_bytes / (1024**3):.4f} GB")
+                size_bytes = images.element_size() * images.nelement()
+                torch.cuda.empty_cache()
+                print(torch.cuda.memory_summary(device=device, abbreviated=True))
+                total_memory = torch.cuda.get_device_properties(device=device).total_memory / 1024**3
+                print(f"Total memory: {total_memory:.4f} GB")
+                print(f"Allocated memory: {torch.cuda.memory_allocated(device=device)/ 1024**3:.4f} GB")   
+                print(f"Reserved memory: {torch.cuda.memory_reserved(device=device)/ 1024**3:.4f} GB")
+                print(f"Max memory: {torch.cuda.max_memory_allocated(device=device)/ 1024**3:.4f} GB")
+                print(f"Max reserved memory: {torch.cuda.max_memory_reserved(device=device)/ 1024**3:.4f} GB") 
+                print(f"Available memory: {total_memory - torch.cuda.memory_allocated(device=device)/ 1024**3:.4f} GB")
+                print(f"Tensor size: {size_bytes / (1024**2):.2f} MB, {size_bytes / (1024**3):.4f} GB")
 
-                    if images.ndim == 3:
-                        images = images.unsqueeze(0).unsqueeze(0)
-                    elif images.ndim == 4:
-                        images = images.unsqueeze(0)
+                if images.ndim == 3:
+                    images = images.unsqueeze(0).unsqueeze(0)
+                elif images.ndim == 4:
+                    images = images.unsqueeze(0)
 
-                    if self._inferer == InfererType.SLIDING_WINDOW:
-                        d[self._pred_dataset_key] = sliding_window_inference(
-                            inputs=images,
-                            roi_size=self.roi_size,
-                            mode="gaussian",
-                            progress=True,
-                            sw_device='cuda',
-                            device='cpu',
-                            sw_batch_size=self.sw_batch_size,
-                            overlap=self.overlap,
-                            predictor=self.model,
-                        )
-                        # d[self._pred_dataset_key] = SlidingWindowInfererAdapt(
-                        #     roi_size=self.roi_size,
-                        #     # mode="gaussian",
-                        #     progress=True,
-                        #     sw_batch_size=self.sw_batch_size,
-                        #     overlap=self.overlap,
-                        # )(inputs=images, network=self.model)
-                    elif self._inferer == InfererType.SIMPLE:
-                        # Instantiates the SimpleInferer and directly uses its __call__ function
-                        d[self._pred_dataset_key] = simple_inference()(
-                            inputs=images, network=self.model
-                        )
-                    else:
-                        raise ValueError(
-                            f"Unknown inferer: {self._inferer!r}. Available options are "
-                            f"{InfererType.SLIDING_WINDOW!r} and {InfererType.SIMPLE!r}."
-                        )
+                if self._inferer == InfererType.SLIDING_WINDOW:
+                    d[self._pred_dataset_key] = sliding_window_inference(
+                        inputs=images,
+                        roi_size=self.roi_size,
+                        mode="constant",
+                        progress=True,
+                        sw_device='cuda',
+                        device='cuda',
+                        sw_batch_size=self.sw_batch_size,
+                        overlap=self.overlap,
+                        predictor=self.model,
+                    )
+                    # d[self._pred_dataset_key] = SlidingWindowInfererAdapt(
+                    #     roi_size=self.roi_size,
+                    #     # mode="gaussian",
+                    #     progress=True,
+                    #     sw_batch_size=self.sw_batch_size,
+                    #     overlap=self.overlap,
+                    # )(inputs=images, network=self.model)
+                elif self._inferer == InfererType.SIMPLE:
+                    # Instantiates the SimpleInferer and directly uses its __call__ function
+                    d[self._pred_dataset_key] = simple_inference()(
+                        inputs=images, network=self.model
+                    )
+                else:
+                    raise ValueError(
+                        f"Unknown inferer: {self._inferer!r}. Available options are "
+                        f"{InfererType.SLIDING_WINDOW!r} and {InfererType.SIMPLE!r}."
+                    )
 
-                    if self.deep_supervision:
-                        d[self._pred_dataset_key] = d[self._pred_dataset_key][0]
-                    
-                    d = [self.post_process(i) for i in decollate_batch(d)]                    
-                    out_ndarray = d[0][self._pred_dataset_key].cpu().numpy()
-                    # out_ndarray = np.squeeze(out_ndarray, 0)
-                    
+                if self.deep_supervision:
+                    d[self._pred_dataset_key] = d[self._pred_dataset_key][0]
+                
+                d = [self.post_process(i) for i in decollate_batch(d)]                    
+                out_ndarray = d[0][self._pred_dataset_key].cpu().numpy()
+                # out_ndarray = np.squeeze(out_ndarray, 0)
+                
         return {"image":out_ndarray, "meta":input_img_metadata}

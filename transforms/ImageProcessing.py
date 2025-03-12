@@ -3,7 +3,7 @@ import os
 import gc
 from joblib import Parallel, delayed
 import torch
-import numpy as np
+import numpy 
 from monai.transforms import Transform, MapTransform, LoadImage
 from monai.utils.enums import TransformBackends
 from monai.networks.layers import GaussianFilter
@@ -35,8 +35,9 @@ __all__ = [
 def _to_tensor(data):
     if isinstance(data, torch.Tensor):
         return data
-    elif isinstance(data, np.ndarray):
-        return torch.from_numpy(data)
+    elif isinstance(data, numpy.ndarray):
+        data = numpy.asarray(data)
+        return torch.Tensor(data)
     else:
         raise ValueError(f"Unsupported data type: {type(data)}")
 
@@ -77,7 +78,7 @@ class DuplicateChanneld(MapTransform):
         super().__init__(keys)
         self.target_channels = target_channels
 
-    def __call__(self, data: Mapping[Hashable, np.ndarray]) -> Mapping[Hashable, np.ndarray]:
+    def __call__(self, data: Mapping[Hashable, numpy.ndarray]) -> Mapping[Hashable, numpy.ndarray]:
         d = dict(data)
         for key in self.keys:
             d[key] = torch.cat([_to_tensor(d[key])]*self.target_channels, dim=0)
@@ -115,7 +116,7 @@ class RandMultiWindowing(Transform):
         self.output_nums = output_nums
     def __call__(self, img):
         img = _to_tensor(img)
-        nums = [0]+list(np.random.randint(self.ranges[0], self.ranges[1], self.output_nums-1))
+        nums = [0]+list(numpy.random.randint(self.ranges[0], self.ranges[1], self.output_nums-1))
         return [self.znorm(img, [self.window[0]-num, self.window[1]+num]) for num in nums]
 
 class TargetMultiWindowing(Transform):
@@ -123,7 +124,7 @@ class TargetMultiWindowing(Transform):
     def __init__(self, window:list, ranges:list, output_nums:int):
         self.window = window
         self.znorm = ZNormalization(contrast=window)
-        self.nums = [0]+list(np.random.randint(ranges[0], ranges[1], output_nums-1))
+        self.nums = [0]+list(numpy.random.randint(ranges[0], ranges[1], output_nums-1))
     def __call__(self, img):
         img = _to_tensor(img)
         return [self.znorm(img, [self.window[0]-num, self.window[1]+num]) for num in self.nums]
@@ -232,11 +233,11 @@ class Normalization(Transform):
         return img
     def cal_vals(self, img, mask):
         if mask.ndim==img.ndim:
-            return np.min(img[mask>0]), np.max(img[mask>0])
+            return numpy.min(img[mask>0]), numpy.max(img[mask>0])
         else:
-            temp = np.zeros_like(img[0])
+            temp = numpy.zeros_like(img[0])
             temp[img[0]>0] = img[0, img[0]>0]
-            return np.min(temp[temp>0]), np.max(temp[temp>0])
+            return numpy.min(temp[temp>0]), numpy.max(temp[temp>0])
 
 class Normalizationd(MapTransform):
     def __init__(self, keys:KeysCollection, image_key:str="image", label_key:str="label"):
