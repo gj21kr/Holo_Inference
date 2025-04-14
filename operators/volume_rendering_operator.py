@@ -113,20 +113,35 @@ class IntegratedVolumeRendererOp(Operator):
         super().__init__(fragment, *args, **kwargs)
 
     def setup(self, spec: OperatorSpec):
-        # Define inputs
+        from holoscan.core import ConditionType
+        
+        # Define required inputs
         spec.input("density_volume")
         spec.input("density_spacing")
-        spec.input("density_permute_axis", condition="optional")
-        spec.input("density_flip_axes", condition="optional")
+        
+        # Define optional inputs - create them first, then set the condition
+        spec.input("density_permute_axis")
+        spec.inputs["density_permute_axis"].condition(ConditionType.NONE)
+        
+        spec.input("density_flip_axes")
+        spec.inputs["density_flip_axes"].condition(ConditionType.NONE)
         
         # Optional mask volume inputs
-        spec.input("mask_volume", condition="optional")
-        spec.input("mask_spacing", condition="optional")
-        spec.input("mask_permute_axis", condition="optional")
-        spec.input("mask_flip_axes", condition="optional")
+        spec.input("mask_volume")
+        spec.inputs["mask_volume"].condition(ConditionType.NONE)
+        
+        spec.input("mask_spacing")
+        spec.inputs["mask_spacing"].condition(ConditionType.NONE)
+        
+        spec.input("mask_permute_axis")
+        spec.inputs["mask_permute_axis"].condition(ConditionType.NONE)
+        
+        spec.input("mask_flip_axes")
+        spec.inputs["mask_flip_axes"].condition(ConditionType.NONE)
         
         # Camera pose input
-        spec.input("camera_pose", condition="optional")
+        spec.input("camera_pose")
+        spec.inputs["camera_pose"].condition(ConditionType.NONE)
         
         # Outputs
         spec.output("color_buffer_out")
